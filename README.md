@@ -52,7 +52,7 @@ If you use this work, please cite:
 ```
 
 ### Funders
-- The National Key R\&D Program of China (2023YFE0110900)
+- The National Key R&D Program of China (2023YFE0110900)
 - National Natural Science Foundation of China (52074040)
 - Nazarbayev University’s Collaborative Research Project (111024CRP2014)
 
