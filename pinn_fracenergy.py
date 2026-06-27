@@ -61,7 +61,7 @@ from pinn_fracenergy_model import (
     classification_metrics,
     CONFIGS_3D,
 )
-from pinn_fracenergy_plots import generate_all_plots
+from pinn_fracenergy_plots import analytical_baseline_summary, generate_all_plots
 
 # Reproducibility for data
 np.random.seed(DATA_SEED)
@@ -341,6 +341,100 @@ if pred_3D_test is None:
     pred_3D_test_log = pinn_3D.predict(data.X_3D_test_scaled, verbose=0).flatten()
     pred_3D_test = np.expm1(pred_3D_test_log)
 
+
+def _monotonic_rate(values, expected):
+    diffs = np.diff(np.asarray(values, dtype=float))
+    tol = 1e-8 * max(1.0, float(np.nanmax(np.abs(values))))
+    if expected == "increasing":
+        return float(np.mean(diffs >= -tol))
+    if expected == "decreasing":
+        return float(np.mean(diffs <= tol))
+    raise ValueError(f"Unknown monotonic direction: {expected}")
+
+
+def _predict_1d_energy(model, L_values):
+    X_scaled = data.scaler_1D.transform(np.asarray(L_values).reshape(-1, 1))
+    pred_s = model.predict(X_scaled, verbose=0).flatten()
+    pred_log = data.y_1D_scaler.inverse_transform(pred_s.reshape(-1, 1)).ravel()
+    return np.expm1(pred_log)
+
+
+def _predict_2d_energy(model, L_values, W_values):
+    X = np.column_stack([L_values, W_values])
+    X_scaled = data.scaler_2D.transform(X)
+    pred_s = model.predict(X_scaled, verbose=0).flatten()
+    pred_log = data.y_2D_scaler.inverse_transform(pred_s.reshape(-1, 1)).ravel()
+    return np.expm1(pred_log)
+
+
+def _predict_3d_energy(model, L_values, W_values, P_values, mu_values):
+    X = np.column_stack([L_values, W_values, P_values, np.log(mu_values)])
+    X_scaled = data.scaler_3D.transform(X)
+    pred_log = model.predict(X_scaled, verbose=0).flatten()
+    return np.expm1(pred_log)
+
+
+def physics_consistency_diagnostics():
+    n = 300
+    L_line = np.linspace(0.1, 25.0, n)
+    W_line = np.linspace(0.01, 2.5, n)
+    P_line = np.linspace(1.0, 120.0, n)
+    mu_line = np.linspace(0.001, 0.3, n)
+    L0 = np.full(n, np.median(data.L))
+    W0 = np.full(n, data.W0)
+    P0 = np.full(n, data.P0)
+    mu0 = np.full(n, data.mu0)
+
+    rows = [
+        {
+            "Model": "1D",
+            "Variable": "L",
+            "Expected": "decreasing",
+            "Monotonic rate": _monotonic_rate(_predict_1d_energy(pinn_1D, L_line), "decreasing"),
+        },
+        {
+            "Model": "2D",
+            "Variable": "L",
+            "Expected": "decreasing",
+            "Monotonic rate": _monotonic_rate(_predict_2d_energy(pinn_2D, L_line, W0), "decreasing"),
+        },
+        {
+            "Model": "2D",
+            "Variable": "W",
+            "Expected": "increasing",
+            "Monotonic rate": _monotonic_rate(_predict_2d_energy(pinn_2D, L0, W_line), "increasing"),
+        },
+    ]
+    if pinn_3D is not None:
+        rows.extend([
+            {
+                "Model": "3D",
+                "Variable": "L",
+                "Expected": "decreasing",
+                "Monotonic rate": _monotonic_rate(_predict_3d_energy(pinn_3D, L_line, W0, P0, mu0), "decreasing"),
+            },
+            {
+                "Model": "3D",
+                "Variable": "W",
+                "Expected": "increasing",
+                "Monotonic rate": _monotonic_rate(_predict_3d_energy(pinn_3D, L0, W_line, P0, mu0), "increasing"),
+            },
+            {
+                "Model": "3D",
+                "Variable": "P",
+                "Expected": "increasing",
+                "Monotonic rate": _monotonic_rate(_predict_3d_energy(pinn_3D, L0, W0, P_line, mu0), "increasing"),
+            },
+            {
+                "Model": "3D",
+                "Variable": "mu",
+                "Expected": "decreasing",
+                "Monotonic rate": _monotonic_rate(_predict_3d_energy(pinn_3D, L0, W0, P0, mu_line), "decreasing"),
+            },
+        ])
+    return pd.DataFrame(rows)
+
+
 print("Max true:", np.max(data.y_3D_true_test))
 print("Max pred:", np.max(pred_3D_test))
 print("Std true:", np.std(data.y_3D_true_test))
@@ -378,10 +472,15 @@ if pinn_3D is not None:
 else:
     t_inf_3D = np.nan
 
+params_1D = pinn_1D.count_params()
+params_2D = pinn_2D.count_params()
+params_3D = pinn_3D.count_params() if pinn_3D is not None else np.nan
+
 runtime_df = pd.DataFrame({
     "Task": ["FDM baseline (formula)", "PINN training 1D", "PINN training 2D", "PINN training 3D",
              "PINN inference 1D", "PINN inference 2D", "PINN inference 3D"],
-    "Time (s)": [t_fdm, t_train_1D, t_train_2D, t_train_3D, t_inf_1D, t_inf_2D, t_inf_3D]
+    "Time (s)": [t_fdm, t_train_1D, t_train_2D, t_train_3D, t_inf_1D, t_inf_2D, t_inf_3D],
+    "Parameters": [np.nan, params_1D, params_2D, params_3D, params_1D, params_2D, params_3D],
 })
 
 print("\nPerformance Metrics (Test Set)")
@@ -394,6 +493,14 @@ print(f"NRMSE (3D): {nrmse_3D:.4f}")
 print(f"R2 (1D): {r2_1D:.4f}")
 print(f"R2 (2D): {r2_2D:.4f}")
 print(f"R2 (3D): {r2_3D:.4f}")
+
+print("\nAnalytical Baseline Metrics (amplitude-calibrated)")
+baseline_df = pd.DataFrame(analytical_baseline_summary(data))
+print(baseline_df)
+
+print("\nPhysics Consistency Diagnostics (line-out monotonicity)")
+physics_df = physics_consistency_diagnostics()
+print(physics_df)
 
 print("\nFit Diagnostics (Train vs Val, scaled targets)")
 

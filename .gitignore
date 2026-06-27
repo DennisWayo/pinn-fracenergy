@@ -27,3 +27,17 @@ Thumbs.db
 *.iml
 
 Figures/
+run_logs/
+learning_curve_logs_*/
+learning_curve_results_*.csv
+learning_curve_summary_*.csv
+
+# Generated root-level figures from run_all.sh / pinn_fracenergy.py
+3D_surface.png
+trainloss.png
+contour_map.png
+error_distribution.png
+kgd_baseline.png
+confusion_*.png
+roc_curves.png
+learning_curve_*.png

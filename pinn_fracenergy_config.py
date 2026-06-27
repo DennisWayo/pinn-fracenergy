@@ -17,8 +17,12 @@ DATA_SEED = int(os.environ.get("DATA_SEED", "42"))
 MODEL_SEED = int(os.environ.get("MODEL_SEED", str(DATA_SEED)))
 SPLIT_SEED = int(os.environ.get("SPLIT_SEED", str(DATA_SEED)))
 
-# Figure output directory
-FIG_DIR = os.environ.get("FIG_DIR", "Figures")
+# Figure output directory. Supports both repository layouts:
+# - manuscript archive: Python files in codes/, figures at project root
+# - code repository: Python files at repository root
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(BASE_DIR) if os.path.basename(BASE_DIR) == "codes" else BASE_DIR
+FIG_DIR = os.environ.get("FIG_DIR", PROJECT_DIR)
 
 # Runtime controls
 FAST_RUN = os.environ.get("FAST_RUN", "0") == "1"

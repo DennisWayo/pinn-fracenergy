@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 plt.switch_backend("Agg")
 import seaborn as sns
-from sklearn.metrics import roc_curve, roc_auc_score
+from sklearn.metrics import roc_curve, roc_auc_score, r2_score
 
 
 def ensure_fig_dir(fig_dir):
@@ -43,6 +43,62 @@ def configure_plot_style():
         "axes.spines.top": False,
         "axes.spines.right": False,
     })
+
+
+def _amplitude_calibrate(y_true, y_raw):
+    scale = float(np.dot(y_true, y_raw) / (np.dot(y_raw, y_raw) + 1e-12))
+    return scale * y_raw, scale
+
+
+def analytical_baselines(data, num_points=500):
+    L_line = np.linspace(0.1, 25.0, num_points)
+    E_proxy = (data.P0 * data.W0 / data.mu0) * np.exp(-L_line / 5)
+
+    E_rock = 25e9   # Pa
+    nu = 0.25
+    height = 10.0   # m; amplitude is calibrated, so this affects scale only.
+    E_prime = E_rock / (1 - nu**2)
+
+    # Treat pressure gradient as a length-scaled net pressure proxy.
+    P_net_MPa = data.P0 * L_line
+    P_net_Pa = P_net_MPa * 1e6
+    a = L_line / 2.0
+
+    w_kgd = (4 * (1 - nu**2) / E_rock) * P_net_Pa * a
+    w_pkn = (4 * P_net_Pa * height) / E_prime
+
+    E_kgd_raw = (P_net_MPa * w_kgd / data.mu0) * np.exp(-L_line / 5)
+    E_pkn_raw = (P_net_MPa * w_pkn / data.mu0) * np.exp(-L_line / 5)
+
+    E_kgd, kgd_scale = _amplitude_calibrate(E_proxy, E_kgd_raw)
+    E_pkn, pkn_scale = _amplitude_calibrate(E_proxy, E_pkn_raw)
+
+    return {
+        "L": L_line,
+        "proxy": E_proxy,
+        "kgd": E_kgd,
+        "pkn": E_pkn,
+        "kgd_scale": kgd_scale,
+        "pkn_scale": pkn_scale,
+    }
+
+
+def analytical_baseline_summary(data):
+    baselines = analytical_baselines(data)
+    rows = []
+    for name, key in [
+        ("KGD-inspired (simplified)", "kgd"),
+        ("PKN-inspired (simplified)", "pkn"),
+    ]:
+        err = baselines["proxy"] - baselines[key]
+        mse = float(np.mean(err ** 2))
+        nrmse = float(np.sqrt(mse) / (np.std(baselines["proxy"]) + 1e-12))
+        rows.append({
+            "Baseline": name,
+            "NRMSE vs. proxy": nrmse,
+            "R2 vs. proxy": float(r2_score(baselines["proxy"], baselines[key])),
+        })
+    return rows
 
 
 def plot_confusion_matrix(name, cm, threshold, fig_dir):
@@ -170,35 +226,19 @@ def plot_fdm_instability(fig_dir):
 
 
 def plot_kgd_baseline(data, fig_dir):
-    # KGD baseline comparison (analytical reference under simplifying assumptions)
-    # Assumptions: plane-strain crack, uniform net pressure, linear elastic solid.
-    # w(x) = 4(1-ν^2)/E * P_net * sqrt(a^2 - x^2)  (Sneddon-type solution)
-
-    L_line = np.linspace(0.1, 25.0, 300)
-    E_line_true = (data.P0 * data.W0 / data.mu0) * np.exp(-L_line / 5)
-
-    E_rock = 25e9   # Pa
-    nu = 0.25
-
-    # Treat pressure gradient as net pressure scaling for baseline
-    P_net_MPa = data.P0 * L_line  # MPa, proxy
-    P_net_Pa = P_net_MPa * 1e6
-
-    # Half-length a
-    a = L_line / 2.0
-
-    # Opening at center (x=0)
-    w0 = (4 * (1 - nu**2) / E_rock) * P_net_Pa * a
-
-    # Baseline energy using synthetic structure with KGD opening
-    E_kgd = (P_net_MPa * w0 / data.mu0) * np.exp(-L_line / 5)
+    # Analytical trend baselines under simplifying assumptions.
+    baselines = analytical_baselines(data)
 
     fig, ax = plt.subplots(figsize=(6.5, 4))
-    ax.plot(L_line, E_line_true, color="black", linewidth=1.5, label="Synthetic (fixed W,P,μ)")
-    ax.plot(L_line, E_kgd, color="#762A83", linewidth=1.4, label="KGD baseline (proxy)")
+    ax.plot(baselines["L"], baselines["proxy"], color="black", linewidth=1.5,
+            label="Synthetic (fixed W,P,μ)")
+    ax.plot(baselines["L"], baselines["kgd"], color="#762A83", linewidth=1.4,
+            label="KGD baseline (calibrated)")
+    ax.plot(baselines["L"], baselines["pkn"], color="#C99400", linewidth=1.4,
+            linestyle="--", label="PKN baseline (calibrated)")
     ax.set_xlabel("Fracture length L (m)")
     ax.set_ylabel("Energy balance E (a.u.)")
-    ax.set_title("Synthetic vs. KGD Baseline")
+    ax.set_title("Synthetic vs. KGD/PKN Baselines")
     ax.legend(frameon=False)
     fig.tight_layout()
     save_fig(fig, fig_dir, "kgd_baseline.png")
@@ -220,7 +260,8 @@ def plot_2d_contour(data, models, fig_dir):
 
     grid_scaled = data.scaler_2D.transform(grid)
     Z_s = models.pinn_2D.predict(grid_scaled, verbose=0).flatten()
-    Z = data.y_2D_scaler.inverse_transform(Z_s.reshape(-1, 1)).reshape(Yg.shape)
+    Z_log = data.y_2D_scaler.inverse_transform(Z_s.reshape(-1, 1)).ravel()
+    Z = np.expm1(Z_log).reshape(Yg.shape)
 
     fig, ax = plt.subplots(figsize=(6.5, 4.5))
     contour = ax.contourf(Xg, Yg, Z, levels=24, cmap="viridis")

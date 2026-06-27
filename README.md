@@ -2,15 +2,17 @@
 ![Build Status](https://img.shields.io/badge/PINN-yes-green)
 ![Build Status](https://img.shields.io/badge/FDM-yes-blue)
 ![Contributions](https://img.shields.io/badge/contributions-welcome-gold)
-![GitHub issues](https://img.shields.io/github/issues/DennisWayo/3D-PINN-FDM-FracEnergyBalance)
-![GitHub forks](https://img.shields.io/github/forks/DennisWayo/3D-PINN-FDM-FracEnergyBalance)
-![GitHub stars](https://img.shields.io/github/stars/DennisWayo/3D-PINN-FDM-FracEnergyBalance)
+![GitHub issues](https://img.shields.io/github/issues/DennisWayo/pinn-fracenergy)
+![GitHub forks](https://img.shields.io/github/forks/DennisWayo/pinn-fracenergy)
+![GitHub stars](https://img.shields.io/github/stars/DennisWayo/pinn-fracenergy)
 
-# Physics-Informed Neural Networks Modeling of Energy-Balance Proxies for Hydraulic Fracture Propagation in 1D-3D
+# Physics-Guided Neural Regression for Hydraulic-Fracture Energy Proxies
 
-This repository provides a physics-guided PINN benchmark that learns a synthetic energy proxy
-across 1D, 2D, and 3D input spaces. The setup is designed to study dimensional effects and
-training stability rather than full PDE coupling.
+This repository provides a physics-guided neural regression benchmark for learning a
+synthetic hydraulic-fracture energy proxy across 1D, 2D, and 3D input spaces. The setup is
+designed to study dimensional scaling, training stability, monotonic physical consistency,
+and surrogate accuracy under a controlled target. It is not a strict PINN because no PDE
+residual is included in the loss.
 
 ## Energy proxy
 
@@ -29,6 +31,35 @@ Input cases:
 - 2D: `(L, W)` at fixed `P, mu`
 - 3D: `(L, W, P, log(mu))`
 
+## Run everything
+
+The root wrapper checks the Python environment, runs the selected workflow, writes logs to
+`run_logs/`, and writes generated figures to the repository root.
+
+```bash
+bash run_all.sh
+```
+
+Useful modes:
+
+```bash
+bash run_all.sh --quick            # smoke test only; metrics are not paper-quality
+bash run_all.sh --learning-curves  # long sample-size learning-curve study
+bash run_all.sh --all              # main run plus learning curves
+```
+
+Required Python packages:
+
+```bash
+python3 -m pip install numpy pandas scikit-learn matplotlib seaborn tensorflow
+```
+
+You can also choose a specific Python environment:
+
+```bash
+PYTHON_BIN=/path/to/python3 bash run_all.sh
+```
+
 ## Featured results
 
 ![comparison.png](comparison.png)
@@ -45,28 +76,35 @@ Highlight: A compact stability contrasts stable vs. unstable explicit steps, und
 python pinn_fracenergy.py
 ```
 
-Outputs (plots and tables) are written to `Figures/`. Edit `pinn_fracenergy_config.py` to
-change dataset size, training schedule, and 3D sweep options.
+The direct Python entry point is useful for manual experimentation. For reproducible runs,
+prefer `bash run_all.sh`. Edit `pinn_fracenergy_config.py` or use environment variables to
+change dataset size, training schedule, plot generation, and 3D sweep options.
 
-## Results (test set, default config)
+## Results (reproduced CPU run)
 
 | Model | MSE | NRMSE | R^2 |
 |---|---:|---:|---:|
-| 1D PINN | 21.5262 | 0.0371 | 0.9986 |
-| 2D PINN | 1747.4936 | 0.2389 | 0.9429 |
-| 3D PINN | 11417.2359 | 0.0939 | 0.9912 |
+| 1D | 0.0031 | 0.0004 | 1.0000 |
+| 2D | 1.4580 | 0.0069 | 1.0000 |
+| 3D | 10917.8261 | 0.0918 | 0.9916 |
+
+The reported metrics are computed on inverse-transformed, noise-free proxy test targets
+after training on noisy transformed targets.
 
 ## Outputs
 
 Key figures produced by `pinn_fracenergy_plots.py`:
 
-- `Figures/comparison.png`
-- `Figures/fdm_instability.png`
-- `Figures/trainloss.png`
-- `Figures/contour_map.png`
-- `Figures/3D_surface.png`
-- `Figures/error_distribution.png`
-- `Figures/kgd_baseline.png`
+- `comparison.png`
+- `fdm_instability.png`
+- `trainloss.png`
+- `contour_map.png`
+- `3D_surface.png`
+- `error_distribution.png`
+- `kgd_baseline.png`
+- `confusion_*.png`
+- `roc_curves.png`
+- `learning_curve_*.png`
 
 ## Repo layout
 
@@ -75,7 +113,9 @@ Key figures produced by `pinn_fracenergy_plots.py`:
 - `pinn_fracenergy_data.py`: synthetic data generation and scaling
 - `pinn_fracenergy_model.py`: model construction, training, metrics
 - `pinn_fracenergy_plots.py`: plotting utilities
-- `Figures/`: generated plots (created on run)
+- `learning_curve_study.py`: repeated sample-size/seed sweep
+- `plot_learning_curves.py`: learning-curve plotting utility
+- `run_all.sh`: one-command runner for the main workflow and learning curves
 - `README.md`, `LICENSE`
 
 ## Citation

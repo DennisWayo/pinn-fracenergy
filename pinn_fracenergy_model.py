@@ -201,9 +201,9 @@ def predict_3d(model, X_scaled):
 
 CONFIGS_3D = {
     "C1": {"name": "C1", "num_layers": 3, "width": 128, "dropout": 0.0, "l2": 1e-6},
-    "C2": {"name": "C2", "num_layers": 3, "width": 128, "dropout": 0.0, "l2": 1e-6},
-    "C3": {"name": "C3", "num_layers": 3, "width": 128, "dropout": 0.0, "l2": 1e-6},
-    "C4": {"name": "C4", "num_layers": 3, "width": 128, "dropout": 0.0, "l2": 1e-6},
+    "C2": {"name": "C2", "num_layers": 3, "width": 128, "dropout": 0.0, "l2": 1e-5},
+    "C3": {"name": "C3", "num_layers": 3, "width": 128, "dropout": 0.05, "l2": 1e-6},
+    "C4": {"name": "C4", "num_layers": 3, "width": 128, "dropout": 0.05, "l2": 1e-5},
 }
 
 
